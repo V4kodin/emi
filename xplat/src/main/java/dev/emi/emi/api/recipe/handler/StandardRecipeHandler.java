@@ -4,6 +4,8 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
+import java.util.ArrayList;
+
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,6 +19,7 @@ import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.api.widget.SlotWidget;
 import dev.emi.emi.api.widget.Widget;
 import dev.emi.emi.platform.EmiClient;
+import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.runtime.EmiDrawContext;
 import net.minecraft.client.MinecraftClient;
@@ -56,7 +59,18 @@ public interface StandardRecipeHandler<T extends ScreenHandler> extends EmiRecip
 
 	@Override
 	default EmiPlayerInventory getInventory(HandledScreen<T> screen) {
-		return new EmiPlayerInventory(getInputSources(screen.getScreenHandler()).stream().map(Slot::getStack).map(EmiStack::of).toList());
+		List<EmiStack> stacks = new ArrayList<>();
+		for (Slot slot : getInputSources(screen.getScreenHandler())) {
+			if (EmiExternalInventoryProviders.handlesSlot(screen, slot)) {
+				continue;
+			}
+			ItemStack is = slot.getStack();
+			if (is.isEmpty()) {
+				continue;
+			}
+			stacks.add(EmiStack.of(is));
+		}
+		return new EmiPlayerInventory(stacks);
 	}
 
 	@Override

@@ -32,6 +32,8 @@ import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.EmiStackInteraction;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.bom.BoM;
+import dev.emi.emi.bom.MaterialNode;
+import dev.emi.emi.bom.MaterialTree;
 import dev.emi.emi.chess.EmiChess;
 import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.config.HeaderType;
@@ -51,11 +53,13 @@ import dev.emi.emi.mixin.accessor.HandledScreenAccessor;
 import dev.emi.emi.network.CreateItemC2SPacket;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiClient;
+import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiDragDropHandlers;
 import dev.emi.emi.registry.EmiExclusionAreas;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackProviders;
+import dev.emi.emi.screen.highlight.StorageHighlightService;
 import dev.emi.emi.screen.tooltip.RecipeTooltipComponent;
 import dev.emi.emi.screen.widget.EmiSearchWidget;
 import dev.emi.emi.screen.widget.SidebarButtonWidget;
@@ -851,48 +855,8 @@ public class EmiScreenManager {
 		if (EmiScreenManager.search.highlight) {
 			query = EmiSearch.compiledQuery;
 		}
-		Set<Slot> ignoredSlots = Sets.newHashSet();
-		Set<EmiStack> synfavs = Sets.newHashSet();
-		if (BoM.craftingMode && BoM.getTree() != null) {
-			List<EmiFavorite.Synthetic> syntheticFavorites = EmiFavorites.syntheticFavorites;
-			for (EmiFavorite.Synthetic fav : syntheticFavorites) {
-				synfavs.addAll(fav.getEmiStacks());
-			}
-			
-			try {
-				HandledScreen<?> hs = EmiApi.getHandledScreen();
-				for (EmiRecipeHandler handler : EmiRecipeFiller.getAllHandlers(hs)) {
-					if (handler instanceof StandardRecipeHandler standard) {
-						ignoredSlots.addAll(standard.getInputSources(hs.getScreenHandler()));
-						ignoredSlots.addAll(standard.getCraftingSlots(hs.getScreenHandler()));
-					}
-				}
-			} catch (Throwable t) {
-				EmiLog.error("Recipe handler is throwing in renderSlotOverlays:", t);
-			}
-		}
 		if (base.screen() instanceof HandledScreen<?> hs && hs instanceof HandledScreenAccessor hsa) {
-			context.push();
-			context.matrices().translate(hsa.getX(), hsa.getY(), 0);
-			for (Slot slot : hs.getScreenHandler().slots) {
-				if (!slot.isEnabled()) {
-					continue;
-				}
-				EmiStack stack = EmiStack.of(slot.getStack());
-				context.push();
-				context.matrices().translate(0, 0, 300);
-				if (query != null) {
- 				if (!query.test(stack)) {
- 					context.fill(slot.x - 1, slot.y - 1, 18, 18, 0x77000000);
- 				}
- 			} else if (BoM.craftingMode && BoM.getTree() != null) {
- 				if (!(slot.inventory instanceof PlayerInventory) && !ignoredSlots.contains(slot) && synfavs.contains(stack)) {
- 					context.fill(slot.x - 1, slot.y - 1, 18, 18, 0x7700BBFF);
- 				}
-				}
-				context.pop();
-			}
-			context.pop();
+			StorageHighlightService.render(context, hs, hsa, query);
 		}
 	}
 

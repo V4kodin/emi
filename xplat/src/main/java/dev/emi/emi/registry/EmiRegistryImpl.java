@@ -12,6 +12,7 @@ import dev.emi.emi.api.EmiDragDropHandler;
 import dev.emi.emi.api.EmiExclusionArea;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.EmiStackProvider;
+import dev.emi.emi.api.recipe.EmiExternalInventoryProvider;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeDecorator;
@@ -135,6 +136,11 @@ public class EmiRegistryImpl implements EmiRegistry {
 	@Override
 	public <T extends ScreenHandler> void addRecipeHandler(ScreenHandlerType<T> type, EmiRecipeHandler<T> handler) {
 		EmiRecipeFiller.handlers.computeIfAbsent(type, (c) -> Lists.newArrayList()).add(handler);
+	}
+
+	@Override
+	public void addExternalInventoryProvider(EmiExternalInventoryProvider provider) {
+		EmiExternalInventoryProviders.providers.add(provider);
 	}
 
 	@Override

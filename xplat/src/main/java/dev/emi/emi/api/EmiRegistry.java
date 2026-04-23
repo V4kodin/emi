@@ -6,6 +6,7 @@ import java.util.function.Predicate;
 
 import org.jetbrains.annotations.ApiStatus;
 
+import dev.emi.emi.api.recipe.EmiExternalInventoryProvider;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.recipe.EmiRecipeDecorator;
@@ -191,6 +192,14 @@ public interface EmiRegistry {
 	 * Recipe handlers are responsible for filling recipes automatically.
 	 */
 	<T extends ScreenHandler> void addRecipeHandler(ScreenHandlerType<T> type, dev.emi.emi.api.recipe.handler.EmiRecipeHandler<T> handler);
+
+	/**
+	 * Registers a provider that contributes stacks from storages outside the player's
+	 * inventory — for example an open AE2 ME terminal, or fluids held by a nearby
+	 * machine. The provider is consulted whenever EMI builds a player inventory
+	 * snapshot for recipe tree / craftable calculations.
+	 */
+	void addExternalInventoryProvider(EmiExternalInventoryProvider provider);
 
 	/**
 	 * Adds a recipe decorator for all recipe categories.

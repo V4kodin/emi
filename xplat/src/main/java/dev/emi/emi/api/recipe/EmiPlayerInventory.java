@@ -20,6 +20,7 @@ import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiFavorite;
@@ -54,15 +55,30 @@ public class EmiPlayerInventory {
 							addStack(slot.getStack());
 						}
 					}
+					addExternalStacks(screen, entity);
 					return;
 				}
 			}
+			// No StandardRecipeHandler — pull from every takeable slot in the open screen so
+			// contents of chests/barrels/ME terminals/etc. count as available for the recipe
+			// tree. Player inventory/hotbar slots are included in the screen's slot list too.
+			for (Slot slot : screen.getScreenHandler().slots) {
+				if (EmiExternalInventoryProviders.handlesSlot(screen, slot)) {
+					continue;
+				}
+				if (slot.canTakeItems(entity)) {
+					addStack(slot.getStack());
+				}
+			}
+			addExternalStacks(screen, entity);
+			return;
 		}
 
 		PlayerInventory pInv = entity.getInventory();
 		for (int i = 0; i < pInv.main.size(); i++) {
 			addStack(pInv.main.get(i));
 		}
+		addExternalStacks(screen, entity);
 	}
 
 	public EmiPlayerInventory(List<EmiStack> stacks) {
@@ -74,6 +90,10 @@ public class EmiPlayerInventory {
 			if (screen.getScreenHandler().getCursorStack() != null) {
 				addStack(screen.getScreenHandler().getCursorStack());
 			}
+		}
+		PlayerEntity player = net.minecraft.client.MinecraftClient.getInstance().player;
+		if (player != null) {
+			addExternalStacks(screen, player);
 		}
 	}
 
@@ -99,6 +119,14 @@ public class EmiPlayerInventory {
 	private void addStack(EmiStack stack) {
 		if (!stack.isEmpty()) {
 			inventory.merge(stack, stack, (a, b) -> a.setAmount(a.getAmount() + b.getAmount()));
+		}
+	}
+
+	private void addExternalStacks(HandledScreen<?> screen, PlayerEntity player) {
+		for (EmiStack stack : EmiExternalInventoryProviders.collect(screen, player)) {
+			if (stack != null && !stack.isEmpty()) {
+				addStack(stack.copy().comparison(c -> none));
+			}
 		}
 	}
 

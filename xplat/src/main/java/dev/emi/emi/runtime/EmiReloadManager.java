@@ -16,6 +16,7 @@ import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiComparisonDefaults;
 import dev.emi.emi.registry.EmiDragDropHandlers;
 import dev.emi.emi.registry.EmiExclusionAreas;
+import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.registry.EmiIngredientSerializers;
 import dev.emi.emi.registry.EmiInitRegistryImpl;
 import dev.emi.emi.registry.EmiPluginContainer;
@@ -130,6 +131,7 @@ public class EmiReloadManager {
 					EmiExclusionAreas.clear();
 					EmiDragDropHandlers.clear();
 					EmiStackProviders.clear();
+					EmiExternalInventoryProviders.clear();
 					EmiRecipeFiller.clear();
 					EmiHidden.clear();
 					EmiTags.ADAPTERS_BY_CLASS.map().clear();
