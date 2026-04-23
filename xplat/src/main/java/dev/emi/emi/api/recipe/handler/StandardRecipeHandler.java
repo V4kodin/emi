@@ -18,6 +18,7 @@ import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.api.widget.SlotWidget;
 import dev.emi.emi.api.widget.Widget;
+import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.platform.EmiClient;
 import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.registry.EmiRecipeFiller;
@@ -69,6 +70,11 @@ public interface StandardRecipeHandler<T extends ScreenHandler> extends EmiRecip
 				continue;
 			}
 			stacks.add(EmiStack.of(is));
+			for (EmiStack fluid : EmiAgnos.getFluidContents(is)) {
+				if (!fluid.isEmpty()) {
+					stacks.add(fluid);
+				}
+			}
 		}
 		return new EmiPlayerInventory(stacks);
 	}

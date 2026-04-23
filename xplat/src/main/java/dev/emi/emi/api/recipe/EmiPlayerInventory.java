@@ -20,6 +20,7 @@ import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiStackList;
@@ -114,6 +115,11 @@ public class EmiPlayerInventory {
 	private void addStack(ItemStack is) {
 		EmiStack stack = EmiStack.of(is).comparison(c -> none);
 		addStack(stack);
+		for (EmiStack fluid : EmiAgnos.getFluidContents(is)) {
+			if (!fluid.isEmpty()) {
+				addStack(fluid.copy().comparison(c -> none));
+			}
+		}
 	}
 
 	private void addStack(EmiStack stack) {

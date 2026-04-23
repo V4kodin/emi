@@ -53,7 +53,9 @@ import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.minecraftforge.common.ForgeHooks;
 import net.minecraftforge.common.brewing.BrewingRecipe;
 import net.minecraftforge.common.brewing.IBrewingRecipe;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.fml.ModContainer;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.loading.FMLLoader;
@@ -285,6 +287,34 @@ public class EmiAgnosForge extends EmiAgnos {
 			return EmiStack.of(f.getFluid(), f.getTag(), f.getAmount());
 		}
 		return EmiStack.EMPTY;
+	}
+
+	@Override
+	protected List<EmiStack> getFluidContentsAgnos(ItemStack stack) {
+		if (stack.isEmpty()) {
+			return List.of();
+		}
+		IFluidHandlerItem handler = stack.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).orElse(null);
+		if (handler == null) {
+			return List.of();
+		}
+		List<EmiStack> result = Lists.newArrayList();
+		int tanks = handler.getTanks();
+		for (int i = 0; i < tanks; i++) {
+			FluidStack fs = handler.getFluidInTank(i);
+			if (fs == null || fs.isEmpty()) {
+				continue;
+			}
+			// Forge uses millibuckets (1 bucket = 1000), EMI internally uses droplets (1 bucket = 81000).
+			// EMI recipes on Forge commonly store fluid amounts in millibuckets as well, so keep mB here
+			// to match what recipe ingredients expect.
+			long amount = (long) fs.getAmount() * stack.getCount();
+			if (amount <= 0) {
+				continue;
+			}
+			result.add(EmiStack.of(fs.getFluid(), fs.getTag(), amount));
+		}
+		return result;
 	}
 
 	@Override

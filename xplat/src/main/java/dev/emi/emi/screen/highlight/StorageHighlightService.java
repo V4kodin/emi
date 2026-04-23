@@ -6,6 +6,7 @@ import com.google.common.collect.Lists;
 
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.mixin.accessor.HandledScreenAccessor;
+import dev.emi.emi.platform.EmiAgnos;
 import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.search.EmiSearch.CompiledQuery;
@@ -51,6 +52,9 @@ public final class StorageHighlightService {
 	private static List<EmiStack> resolve(Slot slot, ItemStack itemStack, HandledScreen<?> screen) {
 		List<EmiStack> candidates = Lists.newArrayList();
 		addCandidate(candidates, EmiStack.of(itemStack));
+		for (EmiStack fluid : EmiAgnos.getFluidContents(itemStack)) {
+			addCandidate(candidates, fluid);
+		}
 		for (EmiStack external : EmiExternalInventoryProviders.collectSlotCandidates(screen, slot, itemStack)) {
 			addCandidate(candidates, external);
 		}

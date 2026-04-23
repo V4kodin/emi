@@ -130,6 +130,20 @@ public abstract class EmiAgnos {
 
 	protected abstract EmiStack createFluidStackAgnos(Object object);
 
+	/**
+	 * Returns the fluid contents of an item stack (e.g. buckets, fluid cells, tanks).
+	 * Used by EMI to treat fluid-carrying items as a source of their contained fluid
+	 * when matching recipe ingredients in the recipe tree crafting mode.
+	 *
+	 * @return zero-or-more {@link EmiStack}s representing fluids stored in the item,
+	 *         each with a positive amount in droplets. Empty list if the item holds no fluid.
+	 */
+	public static List<EmiStack> getFluidContents(ItemStack stack) {
+		return delegate.getFluidContentsAgnos(stack);
+	}
+
+	protected abstract List<EmiStack> getFluidContentsAgnos(ItemStack stack);
+
 	public static boolean canBatch(ItemStack stack) {
 		return delegate.canBatchAgnos(stack);
 	}

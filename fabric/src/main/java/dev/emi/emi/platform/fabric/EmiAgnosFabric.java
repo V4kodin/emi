@@ -30,8 +30,12 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry;
 import net.fabricmc.fabric.api.registry.FuelRegistry;
 import net.fabricmc.fabric.api.transfer.v1.client.fluid.FluidVariantRendering;
+import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
+import net.fabricmc.fabric.api.transfer.v1.fluid.FluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariantAttributes;
+import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
+import net.fabricmc.fabric.api.transfer.v1.storage.StorageView;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
@@ -227,6 +231,34 @@ public class EmiAgnosFabric extends EmiAgnos {
 	@Override
 	protected EmiStack createFluidStackAgnos(Object object) {
 		return JemiUtil.getFluidFromJei(object);
+	}
+
+	@Override
+	protected List<EmiStack> getFluidContentsAgnos(ItemStack stack) {
+		if (stack.isEmpty()) {
+			return List.of();
+		}
+		Storage<FluidVariant> storage = FluidStorage.ITEM.find(stack, ContainerItemContext.withConstant(stack));
+		if (storage == null) {
+			return List.of();
+		}
+		List<EmiStack> result = Lists.newArrayList();
+		try {
+			for (StorageView<FluidVariant> view : storage) {
+				if (view.isResourceBlank()) {
+					continue;
+				}
+				FluidVariant variant = view.getResource();
+				long amount = view.getAmount() * stack.getCount();
+				if (amount <= 0) {
+					continue;
+				}
+				result.add(EmiStack.of(variant.getFluid(), variant.getNbt(), amount));
+			}
+		} catch (Exception e) {
+			EmiLog.warn("Error reading fluid contents from " + stack + ": " + e.getMessage());
+		}
+		return result;
 	}
 
 	@Override
