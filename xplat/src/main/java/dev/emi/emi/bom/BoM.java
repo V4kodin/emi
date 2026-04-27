@@ -355,6 +355,7 @@ public class BoM {
 				ChanceMaterialCost v = e.getValue();
 				combinedCost.chanceRemainders.put(k, new ChanceMaterialCost(k, v.amount, v.chance));
 			}
+			combinedCost.neededIntermediates.addAll(running.neededIntermediates);
 		}
 	}
 

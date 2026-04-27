@@ -2,8 +2,10 @@ package dev.emi.emi.bom;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 
 import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
@@ -16,12 +18,14 @@ public class TreeCost {
 	public Map<EmiIngredient, ChanceMaterialCost> chanceCosts = Maps.newHashMap();
 	public Map<EmiStack, FlatMaterialCost> remainders = Maps.newHashMap();
 	public Map<EmiStack, ChanceMaterialCost> chanceRemainders = Maps.newHashMap();
+	public Set<EmiIngredient> neededIntermediates = Sets.newHashSet();
 
 	public void clear() {
 		costs.clear();
 		chanceCosts.clear();
 		remainders.clear();
 		chanceRemainders.clear();
+		neededIntermediates.clear();
 	}
 
 	public void merge(TreeCost other) {
@@ -63,6 +67,7 @@ public class TreeCost {
 			}
 			existing.minBatch(remainder.minBatch);
 		}
+		neededIntermediates.addAll(other.neededIntermediates);
 	}
 
 	public void calculate(MaterialNode node, long batches) {
@@ -73,6 +78,7 @@ public class TreeCost {
 	public void calculateWithRemainders(MaterialNode node, long batches) {
 		costs.clear();
 		chanceCosts.clear();
+		neededIntermediates.clear();
 		calculateCost(node, batches * node.amount, ChanceState.DEFAULT, false);
 	}
 
@@ -249,6 +255,7 @@ public class TreeCost {
 		
 		long effectiveCrafts = amount;
 		if (recipe != null) {
+			neededIntermediates.add(node.ingredient);
 			long minBatches = (long) Math.ceil(amount / (double) node.divisor);
 			effectiveCrafts = minBatches * node.divisor;
 			if (trackProgress) {
@@ -256,27 +263,22 @@ public class TreeCost {
 				node.neededBatches = minBatches;
 			}
 			ChanceState produced = chance.produce(node.produceChance);
-			for (MaterialNode n : node.children) {
-				calculateCost(n, minBatches * n.amount, produced.consume(n.consumeChance), trackProgress);
-			}
 			EmiStack stack = node.ingredient.getEmiStacks().get(0);
-			addRemainder(stack, effectiveCrafts - amount, produced);
-
 			for (EmiStack es : recipe.getOutputs()) {
 				if (!stack.equals(es)) {
 					addRemainder(es, minBatches * es.getAmount(), produced.consume(es.getChance()));
 				}
 			}
-
 			for (MaterialNode n : node.children) {
 				if (!n.remainder.isEmpty() && n.remainderAmount > 0) {
-					if (n.catalyst) {
-						addRemainder(n.remainder, n.remainderAmount, produced.consume(n.consumeChance));
-					} else {
-						addRemainder(n.remainder, minBatches * n.remainderAmount, produced.consume(n.consumeChance));
-					}
+					long amt = n.catalyst ? n.remainderAmount : minBatches * n.remainderAmount;
+					addRemainder(n.remainder, amt, produced.consume(n.consumeChance));
 				}
 			}
+			for (MaterialNode n : node.children) {
+				calculateCost(n, minBatches * n.amount, produced.consume(n.consumeChance), trackProgress);
+			}
+			addRemainder(stack, effectiveCrafts - amount, produced);
 		} else {
 			addCost(node.ingredient, amount, node.amount, chance);
 		}

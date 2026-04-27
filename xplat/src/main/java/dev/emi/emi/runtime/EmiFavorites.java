@@ -208,11 +208,12 @@ public class EmiFavorites {
 			emptyInventory.inventory.clear();
 			for (MaterialTree tree : trees) {
 				tree.calculateProgress(emptyInventory);
-				countRecipes(originalBatches, originalAmounts, tree.goal);
+				countRecipes(originalBatches, originalAmounts, null, tree.goal);
 			}
 			TreeCost remainingCost = new TreeCost();
 			Object2LongMap<EmiRecipe> batches = new Object2LongLinkedOpenHashMap<>();
 			Object2LongMap<EmiRecipe> amounts = new Object2LongLinkedOpenHashMap<>();
+			Map<EmiRecipe, EmiIngredient> recipeIngredients = Maps.newHashMap();
 			Map<EmiStack, EmiStack> sharedInventory = Maps.newHashMap();
 			for (EmiStack stack : inv.inventory.values()) {
 				sharedInventory.put(stack, stack.copy());
@@ -220,7 +221,7 @@ public class EmiFavorites {
 			for (MaterialTree tree : trees) {
 				EmiPlayerInventory shared = createInventoryFromStacks(sharedInventory);
 				tree.calculateProgress(shared);
-				countRecipes(batches, amounts, tree.goal);
+				countRecipes(batches, amounts, recipeIngredients, tree.goal);
 				remainingCost.merge(tree.cost);
 
 				Map<EmiStack, EmiStack> updatedInventory = Maps.newHashMap();
@@ -251,7 +252,8 @@ public class EmiFavorites {
 				} else if (inv.canCraft(recipe)) {
 					state = 1;
 				}
-				syntheticFavorites.add(new EmiFavorite.Synthetic(recipe, batch, amount, originalAmounts.getOrDefault(recipe, amount), state));
+				EmiIngredient target = recipeIngredients.getOrDefault(recipe, recipe.getOutputs().get(0));
+				syntheticFavorites.add(new EmiFavorite.Synthetic(target, recipe, batch, amount, originalAmounts.getOrDefault(recipe, amount), state));
 			}
 			if (!hasSomething) {
 				BoM.craftingMode = false;
@@ -288,9 +290,10 @@ public class EmiFavorites {
 		return shared;
 	}
 
-	public static void countRecipes(Object2LongMap<EmiRecipe> batches, Object2LongMap<EmiRecipe> amounts, MaterialNode node) {
+	public static void countRecipes(Object2LongMap<EmiRecipe> batches, Object2LongMap<EmiRecipe> amounts,
+			Map<EmiRecipe, EmiIngredient> recipeIngredients, MaterialNode node) {
 		if (node.recipe instanceof EmiResolutionRecipe recipe) {
-			countRecipes(batches, amounts, node.children.get(0));
+			countRecipes(batches, amounts, recipeIngredients, node.children.get(0));
 			return;
 		}
 		// Include empty costs for proper sorting
@@ -309,8 +312,11 @@ public class EmiFavorites {
 				amounts.removeLong(node.recipe);
 			}
 			amounts.put(node.recipe, amount);
+			if (recipeIngredients != null) {
+				recipeIngredients.putIfAbsent(node.recipe, node.ingredient);
+			}
 			for (MaterialNode child : node.children) {
-				countRecipes(batches, amounts, child);
+				countRecipes(batches, amounts, recipeIngredients, child);
 			}
 		}
 	}

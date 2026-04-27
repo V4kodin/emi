@@ -7,9 +7,9 @@ import com.google.common.collect.Sets;
 
 import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
 import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
+import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.bom.BoM;
-import dev.emi.emi.bom.MaterialNode;
 import dev.emi.emi.bom.MaterialTree;
 import dev.emi.emi.registry.EmiExternalInventoryProviders;
 import dev.emi.emi.registry.EmiRecipeFiller;
@@ -42,10 +42,8 @@ public final class RequirementSetProvider {
 		for (var cost : BoM.combinedCost.chanceCosts.values()) {
 			result.addAll(cost.ingredient.getEmiStacks());
 		}
-		for (MaterialTree tree : BoM.getTrees()) {
-			if (tree != null && tree.goal != null) {
-				TreeIngredientCollector.collect(tree.goal, result);
-			}
+		for (EmiIngredient ing : BoM.combinedCost.neededIntermediates) {
+			result.addAll(ing.getEmiStacks());
 		}
 		return result;
 	}
@@ -94,6 +92,7 @@ public final class RequirementSetProvider {
 		hash = 31 * hash + BoM.getTrees().size();
 		hash = 31 * hash + BoM.combinedCost.costs.size();
 		hash = 31 * hash + BoM.combinedCost.chanceCosts.size();
+		hash = 31 * hash + BoM.combinedCost.neededIntermediates.size();
 		for (MaterialTree tree : BoM.getTrees()) {
 			if (tree == null || tree.goal == null) {
 				continue;
@@ -102,20 +101,5 @@ public final class RequirementSetProvider {
 			hash = 31 * hash + (int) tree.batches;
 		}
 		return hash;
-	}
-
-	private static final class TreeIngredientCollector {
-		static void collect(MaterialNode node, Set<EmiStack> out) {
-			if (node == null || node.ingredient == null) {
-				return;
-			}
-			out.addAll(node.ingredient.getEmiStacks());
-			if (node.children == null || node.children.isEmpty()) {
-				return;
-			}
-			for (MaterialNode child : node.children) {
-				collect(child, out);
-			}
-		}
 	}
 }
