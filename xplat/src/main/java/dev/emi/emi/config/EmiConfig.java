@@ -405,6 +405,10 @@ public class EmiConfig {
 	@ConfigValue("binds.view-tree")
 	public static EmiBind viewTree = new EmiBind("key.emi.view_tree", InputUtil.UNKNOWN_KEY.getCode());
 
+	@Comment("Hold to show the recipe picker for tree nodes.")
+	@ConfigValue("binds.tree-picker")
+	public static EmiBind treePicker = new EmiBind("key.emi.tree_picker", InputUtil.UNKNOWN_KEY.getCode());
+
 	@Comment("Return to the previous page in EMI.")
 	@ConfigValue("binds.back")
 	public static EmiBind back = new EmiBind("key.emi.back", GLFW.GLFW_KEY_BACKSPACE);

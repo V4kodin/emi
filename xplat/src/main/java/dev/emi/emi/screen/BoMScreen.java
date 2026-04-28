@@ -11,6 +11,7 @@ import java.util.stream.Stream;
 import org.lwjgl.glfw.GLFW;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.mojang.blaze3d.systems.RenderSystem;
 
 import dev.emi.emi.EmiPort;
@@ -90,6 +91,11 @@ public class BoMScreen extends Screen {
 	private int rootScroll = 0;
 	private boolean initialViewSet = false;
 	private boolean altDown = false;
+	private boolean pickerDown = false;
+	private final Map<MaterialNode, List<EmiRecipe>> recipesCache = Maps.newHashMap();
+	private EmiRecipeCategory hoveredPickerCategory = null;
+	private Node cachedPickerNode = null;
+	private int cachedSubPanelX, cachedSubPanelY, cachedSubPanelW;
 
 	public BoMScreen(HandledScreen<?> old) {
 		super(EmiPort.translatable("screen.emi.recipe_tree"));
@@ -239,6 +245,10 @@ public class BoMScreen extends Screen {
 		}
 		ensureRootVisible();
 		batcher.repopulate();
+		recipesCache.clear();
+		hoveredPickerCategory = null;
+		cachedPickerNode = null;
+		cachedSubPanelW = 0;
 	}
 
 	private void adjustInitialView(int totalCostY) {
@@ -393,6 +403,12 @@ public class BoMScreen extends Screen {
 			for (Node node : nodes) {
 				node.renderAmount(context);
 			}
+			if (pickerDown) {
+				Node pickerNode = getPickerNode(mx, my);
+				if (pickerNode != null) {
+					renderPicker(context, pickerNode, mx, my, delta);
+				}
+			}
 		} else {
 			context.drawCenteredText(EmiPort.translatable("emi.tree_welcome", EmiRenderHelper.getEmiText()), 0, -72);
 			context.drawCenteredText(EmiPort.translatable("emi.no_tree"), 0, -48);
@@ -426,6 +442,14 @@ public class BoMScreen extends Screen {
 		} else if (help.contains(mouseX, mouseY)) {
 			List<TooltipComponent> list = Collections.singletonList(TooltipComponent.of(EmiPort.ordered(EmiPort.translatable("tooltip.emi.bom.help", EmiConfig.addTreeBookmark.getBindText()))));
 			EmiRenderHelper.drawTooltip(this, context, list, width - 18, height - 18, width);
+		}
+		if (pickerDown) {
+			EmiRecipe pickerHovered = getPickerHoveredRecipe(mouseX, mouseY);
+			if (pickerHovered != null) {
+				List<TooltipComponent> list = Lists.newArrayList();
+				list.add(new RecipeTooltipComponent(pickerHovered));
+				EmiRenderHelper.drawTooltip(this, context, list, mouseX, mouseY);
+			}
 		}
 	}
 
@@ -519,7 +543,10 @@ public class BoMScreen extends Screen {
 			altDown = EmiInput.isAltDown();
 			recalculateTree();
 		}
-
+		if (isPickerKeyDown() != pickerDown) {
+			pickerDown = isPickerKeyDown();
+			recalculateTree();
+		}
 		return super.keyReleased(keyCode, scanCode, modifiers);
 	}
 
@@ -570,6 +597,10 @@ public class BoMScreen extends Screen {
 		}
 		if (EmiInput.isAltDown() != altDown) {
 			altDown = EmiInput.isAltDown();
+			recalculateTree();
+		}
+		if (isPickerKeyDown() != pickerDown) {
+			pickerDown = isPickerKeyDown();
 			recalculateTree();
 		}
 
@@ -640,6 +671,44 @@ public class BoMScreen extends Screen {
 				BoM.cycleTree(1);
 				recalculateTree();
 				return true;
+			}
+		}
+		if (pickerDown && tree != null) {
+			Node pickerUiNode = getPickerNode(mx, my);
+			if (pickerUiNode != null && button == 0) {
+				List<EmiRecipe> recipes = getAvailableRecipes(pickerUiNode.node);
+				Map<EmiRecipeCategory, List<EmiRecipe>> groups = groupByCategory(recipes);
+				List<EmiRecipeCategory> categories = Lists.newArrayList(groups.keySet());
+				// Sub-panel click (multi-recipe category expanded)
+				if (hoveredPickerCategory != null && cachedSubPanelW > 0) {
+					List<EmiRecipe> catRecipes = groups.get(hoveredPickerCategory);
+					if (catRecipes != null && catRecipes.size() > 1
+							&& my >= cachedSubPanelY && my < cachedSubPanelY + 16) {
+						int rel = mx - cachedSubPanelX;
+						int idx = rel / 18;
+						if (rel >= 0 && idx < catRecipes.size() && rel % 18 < 16) {
+							tree.addResolution(pickerUiNode.node.ingredient, catRecipes.get(idx));
+							recalculateTree();
+							return true;
+						}
+					}
+				}
+				// Category panel click — apply directly if single recipe in category
+				int catCount = categories.size();
+				int panelX = pickerUiNode.x - (catCount * 18) / 2;
+				int panelY = pickerUiNode.y + 13;
+				if (my >= panelY && my < panelY + 16) {
+					int rel = mx - panelX;
+					int idx = rel / 18;
+					if (rel >= 0 && idx < catCount && rel % 18 < 16) {
+						List<EmiRecipe> catRecipes = groups.get(categories.get(idx));
+						if (catRecipes != null && catRecipes.size() == 1) {
+							tree.addResolution(pickerUiNode.node.ingredient, catRecipes.get(0));
+							recalculateTree();
+							return true;
+						}
+					}
+				}
 			}
 		}
 		if (hover != null) {
@@ -769,6 +838,193 @@ public class BoMScreen extends Screen {
 	@Override
 	public void close() {
 		MinecraftClient.getInstance().setScreen(old);
+	}
+
+	private boolean isPickerKeyDown() {
+		long handle = MinecraftClient.getInstance().getWindow().getHandle();
+		for (EmiBind.ModifiedKey mk : EmiConfig.treePicker.boundKeys) {
+			if (mk.isUnbound()) continue;
+			if (mk.key().getCategory() == InputUtil.Type.KEYSYM
+					&& InputUtil.isKeyPressed(handle, mk.key().getCode())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private List<EmiRecipe> getAvailableRecipes(MaterialNode node) {
+		return recipesCache.computeIfAbsent(node, n -> {
+			List<EmiRecipe> result = Lists.newArrayList();
+			for (EmiStack stack : n.ingredient.getEmiStacks()) {
+				for (EmiRecipe recipe : EmiApi.getRecipeManager().getRecipesByOutput(stack)) {
+					if (recipe.supportsRecipeTree() && !result.contains(recipe)) {
+						result.add(recipe);
+					}
+				}
+			}
+			return result;
+		});
+	}
+
+	private Map<EmiRecipeCategory, List<EmiRecipe>> groupByCategory(List<EmiRecipe> recipes) {
+		Map<EmiRecipeCategory, List<EmiRecipe>> groups = Maps.newLinkedHashMap();
+		for (EmiRecipe recipe : recipes) {
+			groups.computeIfAbsent(recipe.getCategory(), k -> Lists.newArrayList()).add(recipe);
+		}
+		return groups;
+	}
+
+	private Node getPickerNode(int mx, int my) {
+		if (!pickerDown) return null;
+		if (cachedPickerNode != null) {
+			List<EmiRecipe> cr = getAvailableRecipes(cachedPickerNode.node);
+			if (cr.size() > 1) {
+				int cc = groupByCategory(cr).size();
+				int px = cachedPickerNode.x - (cc * 18) / 2;
+				int py = cachedPickerNode.y + 13;
+				int left = px - 2;
+				int right = px + cc * 18 + 2;
+				int bottom = py + 18;
+				if (cachedSubPanelW > 0) {
+					left = Math.min(left, cachedSubPanelX - 2);
+					right = Math.max(right, cachedSubPanelX + cachedSubPanelW + 2);
+					bottom = cachedSubPanelY + 18;
+				}
+				if (mx >= left && mx < right && my >= py - 2 && my < bottom) {
+					return cachedPickerNode;
+				}
+			}
+		}
+		for (Node uiNode : nodes) {
+			if (uiNode.node.recipe == null || uiNode.node.recipe instanceof EmiResolutionRecipe) continue;
+			List<EmiRecipe> recipes = getAvailableRecipes(uiNode.node);
+			if (recipes.size() <= 1) continue;
+			if (uiNode.getHover(mx, my) != null) return uiNode;
+			int catCount = groupByCategory(recipes).size();
+			int panelX = uiNode.x - (catCount * 18) / 2;
+			int panelY = uiNode.y + 13;
+			if (mx >= panelX - 2 && mx < panelX + catCount * 18 + 2 &&
+					my >= panelY - 2 && my < panelY + 18) {
+				return uiNode;
+			}
+		}
+		return null;
+	}
+
+	private void renderPicker(EmiDrawContext context, Node uiNode, int mx, int my, float delta) {
+		List<EmiRecipe> recipes = getAvailableRecipes(uiNode.node);
+		if (recipes.size() <= 1) return;
+		Map<EmiRecipeCategory, List<EmiRecipe>> groups = groupByCategory(recipes);
+		List<EmiRecipeCategory> categories = Lists.newArrayList(groups.keySet());
+		int catCount = categories.size();
+		int panelX = uiNode.x - (catCount * 18) / 2;
+		int panelY = uiNode.y + 13;
+		context.fill(panelX - 2, panelY - 2, catCount * 18 + 4, 20, 0xAA000000);
+		MaterialTree tree = BoM.getTree();
+		EmiRecipe active = tree != null ? tree.getRecipe(uiNode.node.ingredient) : null;
+		EmiRecipeCategory activeCategory = active != null ? active.getCategory() : null;
+
+		EmiRecipeCategory newHovered = null;
+		if (my >= panelY && my < panelY + 16) {
+			int rel = mx - panelX;
+			if (rel >= 0 && rel % 18 < 16) {
+				int idx = rel / 18;
+				if (idx < catCount) newHovered = categories.get(idx);
+			}
+		}
+		if (newHovered != null) {
+			hoveredPickerCategory = newHovered;
+		} else if (cachedPickerNode == uiNode && cachedSubPanelW > 0) {
+			int extLeft = Math.min(panelX - 2, cachedSubPanelX - 2);
+			int extRight = Math.max(panelX + catCount * 18 + 2, cachedSubPanelX + cachedSubPanelW + 2);
+			if (mx >= extLeft && mx < extRight && my >= panelY + 16 && my < cachedSubPanelY + 18) {
+			} else {
+				hoveredPickerCategory = null;
+			}
+		} else {
+			hoveredPickerCategory = null;
+		}
+		cachedPickerNode = uiNode;
+
+		for (int i = 0; i < catCount; i++) {
+			EmiRecipeCategory cat = categories.get(i);
+			int bx = panelX + i * 18;
+			boolean isActive = cat == activeCategory;
+			boolean catHovered = cat == hoveredPickerCategory;
+			int border = isActive ? 0xff8099ff : (catHovered ? 0xff607080 : 0xff404040);
+			context.fill(bx - 1, panelY - 1, 18, 18, border);
+			context.fill(bx, panelY, 16, 16, 0xff111111);
+			cat.renderSimplified(context.raw(), bx, panelY, delta);
+		}
+
+		if (hoveredPickerCategory != null) {
+			List<EmiRecipe> catRecipes = groups.get(hoveredPickerCategory);
+			if (catRecipes != null && catRecipes.size() > 1) {
+				int hovCatIdx = categories.indexOf(hoveredPickerCategory);
+				int subCount = catRecipes.size();
+				int subX = panelX + hovCatIdx * 18 + 8 - (subCount * 18) / 2;
+				int subY = panelY + 20;
+				cachedSubPanelX = subX;
+				cachedSubPanelY = subY;
+				cachedSubPanelW = subCount * 18;
+				context.fill(subX - 2, subY - 2, subCount * 18 + 4, 20, 0xAA000000);
+				for (int i = 0; i < subCount; i++) {
+					EmiRecipe recipe = catRecipes.get(i);
+					int bx = subX + i * 18;
+					boolean isActive = recipe == active;
+					boolean hovered = mx >= bx && mx < bx + 16 && my >= subY && my < subY + 16;
+					int border = isActive ? 0xff8099ff : (hovered ? 0xff607080 : 0xff404040);
+					context.fill(bx - 1, subY - 1, 18, 18, border);
+					context.fill(bx, subY, 16, 16, 0xff111111);
+					if (!recipe.getOutputs().isEmpty()) {
+						recipe.getOutputs().get(0).render(context.raw(), bx, subY, delta, EmiIngredient.RENDER_ICON);
+					} else {
+						recipe.getCategory().renderSimplified(context.raw(), bx, subY, delta);
+					}
+				}
+				return;
+			}
+		}
+		cachedSubPanelW = 0;
+	}
+
+	private EmiRecipe getPickerHoveredRecipe(int screenX, int screenY) {
+		if (!pickerDown) return null;
+		float scale = getScale();
+		int mx = (int) ((screenX - width / 2) / scale - offX);
+		int my = (int) ((screenY - height / 2) / scale - offY);
+		Node pickerNode = getPickerNode(mx, my);
+		if (pickerNode == null) return null;
+		List<EmiRecipe> recipes = getAvailableRecipes(pickerNode.node);
+		Map<EmiRecipeCategory, List<EmiRecipe>> groups = groupByCategory(recipes);
+		List<EmiRecipeCategory> categories = Lists.newArrayList(groups.keySet());
+		// Hovering sub-panel
+		if (hoveredPickerCategory != null && cachedSubPanelW > 0) {
+			List<EmiRecipe> catRecipes = groups.get(hoveredPickerCategory);
+			if (catRecipes != null && catRecipes.size() > 1
+					&& my >= cachedSubPanelY && my < cachedSubPanelY + 16) {
+				int rel = mx - cachedSubPanelX;
+				if (rel >= 0) {
+					int idx = rel / 18;
+					if (idx < catRecipes.size() && rel % 18 < 16) return catRecipes.get(idx);
+				}
+			}
+		}
+		// Hovering category panel (single-recipe category)
+		int catCount = categories.size();
+		int panelX = pickerNode.x - (catCount * 18) / 2;
+		int panelY = pickerNode.y + 13;
+		if (my >= panelY && my < panelY + 16) {
+			int rel = mx - panelX;
+			if (rel >= 0) {
+				int idx = rel / 18;
+				if (idx < catCount && rel % 18 < 16) {
+					List<EmiRecipe> catRecipes = groups.get(categories.get(idx));
+					if (catRecipes != null && catRecipes.size() == 1) return catRecipes.get(0);
+				}
+			}
+		}
+		return null;
 	}
 
 	private class Cost {
